@@ -139,7 +139,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch, computed, nextTick } from 'vue'  // 2026-04-02 新增 nextTick
+import { ref, onMounted, onUnmounted, watch, computed, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import {
   ElButton,
@@ -158,7 +158,7 @@ import {
   Warning,
   Odometer,
   VideoCamera,
-  Operation   // 2026-04-02 新增图标
+  Operation
 } from '@element-plus/icons-vue'
 import { sendMockRequest } from '@/mock/mockLimit.js'
 import client from '@/api/client'
@@ -179,10 +179,10 @@ const scenarioHint = ref('')
 
 // ---------- 2026-04-02 新增：批量请求（20次）相关 ----------
 const batchRunning = ref(false)
-const batchResults = ref([])  // 存储 { success: boolean }
+const batchResults = ref([])
 
 // ---------- 2026-04-02 新增：实时统计相关 ----------
-const recentRequests = ref([])   // 存储 { timestamp, success }
+const recentRequests = ref([])
 let statsInterval = null
 const lastSecondCount = ref(0)
 const lastSecondSuccess = ref(0)
@@ -203,11 +203,19 @@ const currentModeText = computed(() => {
 
 // ---------- 通用请求函数（供单次、批量、自动攻击复用）----------
 // 返回值: { success: boolean, is429?: boolean, error?: any }
+// 2026-04-03 修改：真实算法模式下必须携带请求头
 const performRequest = async () => {
   const mode = localStorage.getItem('rate_limit_mode')
+  const threshold = localStorage.getItem('rate_limit_threshold') || '100'
+  
   if (mode === 'real') {
     try {
-      await client.post('/test-rate-limit', {})
+      await client.post('/api/test-rate-limit', {}, {
+        headers: {
+          'X-RateLimit-Mode': 'real',
+          'X-RateLimit-Threshold': threshold
+        }
+      })
       return { success: true }
     } catch (error) {
       if (error.response && error.response.status === 429) {
@@ -254,21 +262,20 @@ const handleRequestResult = (result, useAlert = true) => {
   }
 }
 
-// 单次请求（使用 alert）
+// 单次请求（使用 alert 阻塞提示）
 const sendSingleRequest = async () => {
-  // 清除场景提示
   scenarioHint.value = ''
   const result = await performRequest()
   handleRequestResult(result, true)
 }
 
-// 2026-04-02 新增：静默请求（用于自动攻击，不使用 alert）
+// 静默请求（用于自动攻击，不使用 alert）
 const sendSingleRequestSilent = async () => {
   const result = await performRequest()
   handleRequestResult(result, false)
 }
 
-// ---------- 2026-04-02 新增：批量发送20次请求（使用 alert）----------
+// ---------- 2026-04-03 修改：批量发送20次请求（瞬时并发，无延迟，中间无弹窗）----------
 const sendBatch20 = async () => {
   if (batchRunning.value) {
     ElMessage.warning('批量请求正在进行中，请稍后')
@@ -279,38 +286,39 @@ const sendBatch20 = async () => {
     return
   }
   batchRunning.value = true
-  batchResults.value = []  // 清空上次结果
+  batchResults.value = []
   let success = 0
   let fail = 0
 
+  // 同时发送所有请求（瞬时并发）
+  const promises = []
   for (let i = 0; i < 20; i++) {
-    const result = await performRequest()
-    if (result.success) {
-      success++
-      batchResults.value.push({ success: true })
-      // 更新全局计数和统计（复用函数）
-      successCount.value++
-      recordRequest(true)
-      addToRecentRequests(true)
-    } else if (result.is429) {
-      fail++
-      batchResults.value.push({ success: false })
-      failCount.value++
-      recordRequest(false)
-      addToRecentRequests(false)
-      alert('被限流了！')
-    } else {
-      // 其他错误，也记录为失败
-      fail++
-      batchResults.value.push({ success: false })
-      alert('请求失败：' + (result.error?.message || '未知错误'))
-    }
-    // 间隔 100ms
-    await new Promise(r => setTimeout(r, 100))
+    const promise = performRequest().then(result => {
+      if (result.success) {
+        success++
+        batchResults.value.push({ success: true })
+        successCount.value++
+        recordRequest(true)
+        addToRecentRequests(true)
+      } else if (result.is429) {
+        fail++
+        batchResults.value.push({ success: false })
+        failCount.value++
+        recordRequest(false)
+        addToRecentRequests(false)
+        // 中间不弹 alert，避免阻塞
+      } else {
+        // 其他错误也算失败
+        fail++
+        batchResults.value.push({ success: false })
+      }
+      return result
+    })
+    promises.push(promise)
   }
+  await Promise.all(promises)
 
   batchRunning.value = false
-  // 最终统计弹窗
   alert(`测试完成：成功${success}次，被限流${fail}次`)
 }
 
@@ -323,8 +331,6 @@ const clearBatchResults = () => {
 const addToRecentRequests = (success) => {
   const now = Date.now()
   recentRequests.value.push({ timestamp: now, success })
-  // 保留最近20条足够用于每秒统计，但为了精确，保留所有最近1秒的请求即可，不过我们会在每秒定时清理
-  // 为了性能，限制数组长度不超过200
   if (recentRequests.value.length > 200) {
     recentRequests.value = recentRequests.value.slice(-100)
   }
@@ -334,7 +340,6 @@ const addToRecentRequests = (success) => {
 const updateStats = () => {
   const now = Date.now()
   const oneSecondAgo = now - 1000
-  // 过滤出最近1秒内的请求
   const recent = recentRequests.value.filter(r => r.timestamp >= oneSecondAgo)
   const total = recent.length
   const success = recent.filter(r => r.success).length
@@ -348,7 +353,6 @@ const updateStats = () => {
   } else {
     lastSecondSuccessRate.value = Math.round((success / total) * 100)
   }
-  // 清理超过1秒的旧记录（可选，避免数组无限增长）
   recentRequests.value = recentRequests.value.filter(r => r.timestamp >= oneSecondAgo)
 }
 
@@ -402,7 +406,6 @@ watch(frequency, () => {
 // ---------- 演示场景函数 ----------
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
 
-// 2026-04-02 新增辅助函数：强制更新场景提示
 const setScenarioHint = async (hint) => {
   scenarioHint.value = ''
   await nextTick()
@@ -441,7 +444,6 @@ const runScenarioB = async () => {
             failCount.value++
             recordRequest(false)
             addToRecentRequests(false)
-            alert('被限流了！')
           } else {
             console.warn('意外错误', err)
           }
@@ -485,7 +487,6 @@ const showScenePanel = () => {
 
 const runScenario = async (scene) => {
   showSceneSelector.value = false
-  // 2026-04-02 修复：先清空提示，再运行场景
   scenarioHint.value = ''
   await nextTick()
   if (scene === 'A') await runScenarioA()
@@ -561,7 +562,6 @@ onMounted(() => {
     ],
     series: []
   })
-  // 启动统计定时器
   startStatsTimer()
 })
 
