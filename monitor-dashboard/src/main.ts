@@ -5,7 +5,7 @@ import Home from './views/Home.vue'
 import TestLimit from './views/TestLimit.vue'
 // 2026-03-27 新增：导入压测数据展示页面组件
 import Benchmark from './views/Benchmark.vue'
-import './styles/main.css'
+//import './styles/main.css'
 
 // 创建路由实例
 const router = createRouter({
