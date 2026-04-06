@@ -46,3 +46,7 @@ public class SlidingWindow implements RateLimiter {
             }
         }
     }
+<<<<<<< HEAD
+}
+=======
+>>>>>>> 257bd779e10e3f7c9c5c85a8be2d6efeff98dd63
