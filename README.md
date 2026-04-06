@@ -7,7 +7,7 @@
 
 
 ## 项目作品概述
-核心功能覆盖：请求转发 + 爽算法限流（滑动窗口java、令牌桶+Lua+Redis）+ 实时监控仪表板 + K6全场景压测
+核心功能覆盖：请求转发 + 双算法限流（滑动窗口java、令牌桶+Lua+Redis）+ 实时监控仪表板 + K6全场景压测
 
 
 ## 核心亮点
@@ -22,7 +22,7 @@
 | 模块 | 技术 |
 | ---- | ---- |
 | 网关核心 | Spring Cloud Gateway + Netty |
-| 限流 | Redis + Lua（令牌桶） |
+| 限流 | java （滑动窗口）、Redis + Lua（令牌桶） |
 | 监控 | Vue3 + TypeScript + ECharts |
 | 压测 | K6 |
 | 构建 | Maven + NPM |
