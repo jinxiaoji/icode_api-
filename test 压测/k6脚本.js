@@ -2,7 +2,7 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 
 // 通过命令行传入，确保后面我改的参数和一开始第一版算法的完全一致（控制变量）
-const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
+const BASE_URL = __ENV.BASE_URL || 'http://localhost:8081'; //测网关
 const MAX_VUS = parseInt(__ENV.VUS) || 1000;      // 最高并发数，建议Day 10/11都用1000
 const TEST_DURATION = __ENV.DURATION || '2m';     // 主力测试时长，建议2分钟取平均
 
@@ -38,4 +38,4 @@ export default function () {
     '无超时错误': (r) => r.status !== 0, // k6中status 0表示网络/超时错误
   });
   
-  sleep(1);
+  sleep(1); }
